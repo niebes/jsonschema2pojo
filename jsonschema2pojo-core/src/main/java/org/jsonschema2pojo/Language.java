@@ -18,6 +18,6 @@ package org.jsonschema2pojo;
 
 public enum Language {
 
-    JAVA, SCALA
+    JAVA, SCALA, KOTLIN
     
 }

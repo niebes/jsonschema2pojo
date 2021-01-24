@@ -25,6 +25,7 @@
         <module>jsonschema2pojo-integration-tests</module>
         <module>jsonschema2pojo-maven-plugin</module>
         <module>jsonschema2pojo-scalagen</module>
+        <module>jsonschema2pojo-kotlingen</module>
     </modules>
 
     <developers>

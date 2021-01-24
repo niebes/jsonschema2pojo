@@ -16,8 +16,9 @@
 
 package org.jsonschema2pojo;
 
-import static org.apache.commons.lang3.StringUtils.*;
-
+import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
+import com.sun.codemodel.CodeWriter;
+import com.sun.codemodel.JCodeModel;
 import java.io.File;
 import java.io.FileNotFoundException;
 import java.io.IOException;
@@ -29,16 +30,15 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.Iterator;
 import java.util.List;
-
 import org.apache.commons.io.FilenameUtils;
 import org.jsonschema2pojo.exception.GenerationException;
 import org.jsonschema2pojo.rules.RuleFactory;
 import org.jsonschema2pojo.util.NameHelper;
 import org.jsonschema2pojo.util.URLUtil;
 
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
-import com.sun.codemodel.CodeWriter;
-import com.sun.codemodel.JCodeModel;
+import static org.apache.commons.lang3.StringUtils.defaultString;
+import static org.apache.commons.lang3.StringUtils.isEmpty;
+import static org.apache.commons.lang3.StringUtils.removeEnd;
 
 public class Jsonschema2Pojo {
     /**
@@ -81,15 +81,17 @@ public class Jsonschema2Pojo {
         }
 
         if (config.getTargetDirectory().exists() || config.getTargetDirectory().mkdirs()) {
+
+            final CodeWriter sourcesWriter;
             if (config.getTargetLanguage() == Language.SCALA) {
-                CodeWriter sourcesWriter = new ScalaFileCodeWriter(config.getTargetDirectory(), config.getOutputEncoding());
-                CodeWriter resourcesWriter = new FileCodeWriterWithEncoding(config.getTargetDirectory(), config.getOutputEncoding());
-                codeModel.build(sourcesWriter, resourcesWriter);
+                sourcesWriter = new ScalaFileCodeWriter(config.getTargetDirectory(), config.getOutputEncoding());
+            } else if (config.getTargetLanguage() == Language.KOTLIN) {
+                sourcesWriter = new KotlinFileCodeWriter(config.getTargetDirectory(), config.getOutputEncoding());
             } else {
-                CodeWriter sourcesWriter = new FileCodeWriterWithEncoding(config.getTargetDirectory(), config.getOutputEncoding());
-                CodeWriter resourcesWriter = new FileCodeWriterWithEncoding(config.getTargetDirectory(), config.getOutputEncoding());
-                codeModel.build(sourcesWriter, resourcesWriter);
+                sourcesWriter = new FileCodeWriterWithEncoding(config.getTargetDirectory(), config.getOutputEncoding());
             }
+            CodeWriter resourcesWriter = new FileCodeWriterWithEncoding(config.getTargetDirectory(), config.getOutputEncoding());
+            codeModel.build(sourcesWriter, resourcesWriter);
         } else {
             throw new GenerationException("Could not create or access target directory " + config.getTargetDirectory().getAbsolutePath());
         }
