@@ -3,15 +3,20 @@ package org.jsonschema2pojo.kotlin
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.BYTE
+import com.squareup.kotlinpoet.COLLECTION
 import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.DOUBLE
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.INT
+import com.squareup.kotlinpoet.ITERABLE
 import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.LIST
 import com.squareup.kotlinpoet.LONG
+import com.squareup.kotlinpoet.MAP
 import com.squareup.kotlinpoet.ParameterSpec
 import com.squareup.kotlinpoet.PropertySpec
+import com.squareup.kotlinpoet.SET
 import com.squareup.kotlinpoet.SHORT
 import com.squareup.kotlinpoet.STRING
 import com.squareup.kotlinpoet.TypeSpec
@@ -90,23 +95,33 @@ class KotlinConverter {
             mapOf()
         }
 
-        private fun jTypeToPoetClassName(jType: JType): ClassName =
-            fullQualifiedNameToPoetClassName(jType.erasure().fullName())
+        private fun jTypeToPoetClassName(jType: JType): ClassName {
+            return fullQualifiedNameToPoetClassName(jType.erasure().fullName())
+        }
 
-        private fun jClassToPoetClassName(jClass: JClass): ClassName =
-            fullQualifiedNameToPoetClassName(jClass.fullName())
+        private fun jClassToPoetClassName(jClass: JClass): ClassName {
+            jClass.typeParams()
+            return fullQualifiedNameToPoetClassName(jClass.fullName())
+        }
 
-        private fun fullQualifiedNameToPoetClassName(fullName: String): ClassName = when (fullName) {
-            "java.lang.String" -> STRING
-            "java.lang.Integer" -> INT
-            "java.lang.Double" -> DOUBLE
-            "java.lang.Byte" -> BYTE
-            "java.lang.Short" -> SHORT
-            "java.lang.Long" -> LONG
-            "java.lang.Boolean" -> BOOLEAN
-            else -> {
+        private fun fullQualifiedNameToPoetClassName(fullName: String): ClassName =
+            javaToKotlinClasses.getOrElse(fullName) {
                 ClassName.bestGuess(fullName)
             }
-        }
+
+        private val javaToKotlinClasses = mapOf(
+            "java.lang.String" to STRING,
+            "java.lang.Integer" to INT,
+            "java.lang.Double" to DOUBLE,
+            "java.lang.Byte" to BYTE,
+            "java.lang.Short" to SHORT,
+            "java.lang.Long" to LONG,
+            "java.lang.Boolean" to BOOLEAN,
+            "java.lang.Iterable" to ITERABLE,
+            "java.util.Iterable" to COLLECTION,
+            "java.util.List" to LIST,
+            "java.util.Set" to SET,
+            "java.util.Map" to MAP
+        )
     }
 }
