@@ -1,5 +1,6 @@
 package org.jsonschema2pojo.kotlin
 
+import com.squareup.kotlinpoet.ANY
 import com.squareup.kotlinpoet.AnnotationSpec
 import com.squareup.kotlinpoet.BOOLEAN
 import com.squareup.kotlinpoet.BYTE
@@ -15,10 +16,12 @@ import com.squareup.kotlinpoet.LIST
 import com.squareup.kotlinpoet.LONG
 import com.squareup.kotlinpoet.MAP
 import com.squareup.kotlinpoet.ParameterSpec
+import com.squareup.kotlinpoet.ParameterizedTypeName.Companion.parameterizedBy
 import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.SET
 import com.squareup.kotlinpoet.SHORT
 import com.squareup.kotlinpoet.STRING
+import com.squareup.kotlinpoet.TypeName
 import com.squareup.kotlinpoet.TypeSpec
 import com.sun.codemodel.JAnnotationUse
 import com.sun.codemodel.JAnnotationValue
@@ -27,10 +30,15 @@ import com.sun.codemodel.JFieldVar
 import com.sun.codemodel.JFormatter
 import com.sun.codemodel.JGenerable
 import com.sun.codemodel.JPackage
-import com.sun.codemodel.JType
 import java.io.CharArrayWriter
 
-
+/**
+ * converts a codemodel jPackage to kotlinpoet FileSpec
+ * problems:
+ * - codemodel doesnt expose annotation values `@JsonDeserialize(as = java.util.LinkedHashSet.class)`
+ * - codemodel doesnt expose generics `Map<String, Any>`
+ * - kotlinpoet doesnt escape annotation names reserved in kotlin like "as"
+ */
 class KotlinConverter {
 
     fun convert(pkg: JPackage, sourceFileName: String): String {
@@ -43,12 +51,7 @@ class KotlinConverter {
                 FunSpec.constructorBuilder().apply {
                     clazz.fields().entries.forEach { (name, fieldType) ->
                         addParameter(
-                            ParameterSpec.builder(
-                                name, jTypeToPoetClassName(fieldType.type()).copy(
-                                    nullable = isNullable(fieldType)
-                                )
-                            )
-                                .build()
+                            ParameterSpec.builder(name, toPoetClass(fieldType)).build()
                         )
                     }
 
@@ -57,13 +60,9 @@ class KotlinConverter {
                 clazz.fields().entries.forEach { (name, fieldType) ->
                     addProperty(
                         PropertySpec.builder(
-                            name, jTypeToPoetClassName(fieldType.type()).copy(
-                                nullable = isNullable(fieldType)
-                            )
-                        ).initializer(name).apply {
-                            val propertySpec = this
-                            toAnnotationSpec(fieldType).onEach(propertySpec::addAnnotation)
-                        }
+                            name, toPoetClass(fieldType)
+                        ).initializer(name)
+                            .addAnnotations(toAnnotationSpec(fieldType))
                             .build()
                     )
                 }
@@ -76,30 +75,39 @@ class KotlinConverter {
             .toString()
     }
 
-    private fun isNullable(fieldType: JFieldVar) = with(fieldType.annotations()
-        .map { it.annotationClass.fullName() }) {
-        contains("javax.annotation.Nullable") || !contains("javax.annotation.Nonnull")
-    }
-
-
     private fun toAnnotationSpec(jFieldVar: JFieldVar): List<AnnotationSpec> =
         jFieldVar.annotations().map { jAnnotationUse ->
-            val type = jClassToPoetClassName(jAnnotationUse.annotationClass)
+            val type = toPoetClassName(jAnnotationUse.annotationClass)
             AnnotationSpec.builder(type)
                 .apply {
                     jAnnotationUse.annotations().map { (key, value) ->
-                        addMember("$key = ${generateToString(value)}")
+                        //TODO escape annotation keys reserved in kotlin "as"
+                        addMember("$key = ${generateToString(value)}", useSiteTarget(AnnotationSpec.UseSiteTarget.FIELD))
                     }
                 }
                 .build()
         }
 
     companion object {
+
+        private fun toPoetClass(fieldType: JFieldVar) = toPoetClassName(fieldType).copy(
+            nullable = isNullable(fieldType)
+        )
+
+        private fun isNullable(fieldType: JFieldVar): Boolean {
+            val annotations = fieldType.annotations().map { it.annotationClass.name() }
+            return with(annotations) {
+                contains("Nullable") || !contains("Nonnull")
+            }
+        }
+
         private fun generateToString(jGenerable: JGenerable): String {
             val charArrayWriter = CharArrayWriter()
             val jFormatter = JFormatter(charArrayWriter)
             jGenerable.generate(jFormatter)
-            return charArrayWriter.toCharArray().joinToString("")
+            return charArrayWriter.toCharArray()
+                .joinToString("")
+                .replace(".class", "::class")
         }
 
         fun JAnnotationUse.annotations(): Map<String, JAnnotationValue> = try {
@@ -108,13 +116,24 @@ class KotlinConverter {
             mapOf()
         }
 
-        private fun jTypeToPoetClassName(jType: JType): ClassName {
-            return fullQualifiedNameToPoetClassName(jType.erasure().fullName())
+        private fun toPoetClassName(jFieldVar: JFieldVar): TypeName {
+            val binaryName = jFieldVar.type().binaryName()
+            val fullName = jFieldVar.type().erasure().fullName()
+            val className = fullQualifiedNameToPoetClassName(fullName)
+            if (binaryName == fullName) return className
+
+            // codemodel doesnt expose generics. parse it out
+            val generics = binaryName.removePrefix(fullName)
+            val unwrap = generics.removePrefix("<").removeSuffix(">")
+            // works for simple generics only. TODO: nested generics like Map<String, Map<String, Any>>
+            return className.parameterizedBy(
+                unwrap.split(",")
+                    .map(::fullQualifiedNameToPoetClassName)
+            )
         }
 
-        private fun jClassToPoetClassName(jClass: JClass): ClassName {
-            return fullQualifiedNameToPoetClassName(jClass.fullName())
-        }
+        private fun toPoetClassName(jClass: JClass): ClassName =
+            fullQualifiedNameToPoetClassName(jClass.fullName())
 
         private fun fullQualifiedNameToPoetClassName(fullName: String): ClassName =
             javaToKotlinClasses.getOrElse(fullName) {
@@ -133,7 +152,8 @@ class KotlinConverter {
             "java.util.Iterable" to COLLECTION,
             "java.util.List" to LIST,
             "java.util.Set" to SET,
-            "java.util.Map" to MAP
+            "java.util.Map" to MAP,
+            "java.lang.Object" to ANY
         )
     }
 }

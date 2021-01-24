@@ -16,7 +16,9 @@
 
 package org.jsonschema2pojo.integration.config;
 
+import com.google.common.collect.Maps;
 import java.io.File;
+import java.util.HashMap;
 import org.jsonschema2pojo.integration.util.Jsonschema2PojoRule;
 import org.junit.Rule;
 import org.junit.Test;
@@ -32,11 +34,37 @@ public class KotlinIT {
 
     @Test
     public void kotlinFilesAreGeneratedAndJavaFilesAreNot() {
+        final HashMap<String, Object> mappings = Maps.newHashMap();
+        mappings.put("URI", "java.net.URL");
         File outputDirectory = schemaRule.generate("/schema/properties/primitiveProperties.json", "com.example",
-                config("targetLanguage", "kotlin"));
+                config(
+                        "targetLanguage", "kotlin",
+                        "includeJsr305Annotations", true,
+                        "includeJsr303Annotations", true,
+                        "formatTypeMapping", mappings
+                )
+        );
 
         assertTrue(new File(outputDirectory, "com/example/PrimitiveProperties.kt").exists());
         assertFalse(new File(outputDirectory, "com/example/PrimitiveProperties.java").exists());
         assertFalse(new File(outputDirectory, "com/example/PrimitiveProperties.scala").exists());
+    }
+
+    @Test
+    public void kotlinFilesAreGeneratedAndJavaFilesAreNot2() {
+        final HashMap<String, Object> mappings = Maps.newHashMap();
+        mappings.put("URI", "java.net.URL");
+        File outputDirectory = schemaRule.generate("/schema/properties/initializeCollectionProperties.json", "com.example",
+                config(
+                        "targetLanguage", "kotlin",
+                        "includeJsr305Annotations", true,
+                        "includeJsr303Annotations", true,
+                        "formatTypeMapping", mappings
+                )
+        );
+
+        assertTrue(new File(outputDirectory, "com/example/InitializeCollectionProperties.kt").exists());
+        assertFalse(new File(outputDirectory, "com/example/InitializeCollectionProperties.java").exists());
+        assertFalse(new File(outputDirectory, "com/example/InitializeCollectionProperties.scala").exists());
     }
 }
