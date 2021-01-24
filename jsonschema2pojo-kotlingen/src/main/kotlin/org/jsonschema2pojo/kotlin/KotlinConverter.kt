@@ -5,6 +5,8 @@ import com.squareup.kotlinpoet.ClassName
 import com.squareup.kotlinpoet.FileSpec
 import com.squareup.kotlinpoet.FunSpec
 import com.squareup.kotlinpoet.KModifier
+import com.squareup.kotlinpoet.ParameterSpec
+import com.squareup.kotlinpoet.PropertySpec
 import com.squareup.kotlinpoet.TypeSpec
 import com.squareup.kotlinpoet.TypeVariableName
 import com.sun.codemodel.JAnnotationUse
@@ -20,63 +22,74 @@ class KotlinConverter {
 
     fun convert(pkg: JPackage, sourceFileName: String): String {
         val clazz = pkg.classes().next()
-
         val packageName = pkg.name()
         val className = clazz.name()
-
-        val classBuilder = TypeSpec.classBuilder(ClassName(packageName, className))
+        val typeSpec = TypeSpec.classBuilder(ClassName(packageName, className))
             .addModifiers(KModifier.DATA)
             .primaryConstructor(
                 FunSpec.constructorBuilder().apply {
                     clazz.fields().entries.forEach { (name, fieldType) ->
-                        addParameter(name, fieldType)
+                        val erasure = fieldType.type().erasure()
+                        addParameter(
+                            ParameterSpec.builder(name, fullQualifiedNameToPoetClassName(erasure.fullName()))
+                                .addModifiers(KModifier.PUBLIC)
+                                .build()
+                        )
                     }
+
                 }.build()
-            )
-            .build()
-        val fileSpec = FileSpec.builder(packageName, sourceFileName)
-            .addType(classBuilder)
-            .build()
-        return fileSpec.toString()
-    }
+            ).apply {
+                clazz.fields().entries.forEach { (name, fieldType) ->
+                    val erasure = fieldType.type().erasure()
+                    addProperty(
+                        PropertySpec.builder(name, fullQualifiedNameToPoetClassName(erasure.fullName()))
+                            .initializer(name).apply {
+                                val propertySpec = this
+                                toAnnotationSpec(fieldType).onEach {
+                                    propertySpec.addAnnotation(it)
+                                }
+                            }
+                            .build()
+                    )
+                }
 
-    private fun FunSpec.Builder.addParameter(
-        name: String,
-        fieldType: JFieldVar
-    ) {
-        val type = TypeVariableName(fieldType.type().fullName()).apply {
-            toAnnotationSpec(fieldType).forEach { annotationSpec ->
-                addAnnotation(annotationSpec)
             }
-        }
-        addParameter(name, type)
+            .build()
+        return FileSpec.builder(packageName, sourceFileName)
+            .addType(typeSpec)
+            .build()
+            .toString()
     }
 
-    private fun toAnnotationSpec(jFieldVar: JFieldVar): List<AnnotationSpec> {
-        return jFieldVar.annotations().map { jAnnotationUse ->
-            val annotationClass = jAnnotationUse.annotationClass
-            AnnotationSpec.builder(ClassName(annotationClass.fullName(), annotationClass.name()))
+    private fun toAnnotationSpec(jFieldVar: JFieldVar): List<AnnotationSpec> =
+        jFieldVar.annotations().map { jAnnotationUse ->
+            val type = fullQualifiedNameToPoetClassName(jAnnotationUse.annotationClass.fullName())
+            AnnotationSpec.builder(type)
                 .apply {
-                    jAnnotationUse.annotations()?.map { (key, value) ->
+                    jAnnotationUse.annotations().map { (key, value) ->
                         addMember("$key = ${generateToString(value)}")
                     }
                 }
                 .build()
         }
-    }
 
-    private fun generateToString(jGenerable: JGenerable): String {
-        val charArrayWriter = CharArrayWriter()
-        val jFormatter = JFormatter(charArrayWriter)
-        jGenerable.generate(jFormatter)
-        return charArrayWriter.toCharArray().joinToString("")
-    }
+    companion object {
+        private fun generateToString(jGenerable: JGenerable): String {
+            val charArrayWriter = CharArrayWriter()
+            val jFormatter = JFormatter(charArrayWriter)
+            jGenerable.generate(jFormatter)
+            return charArrayWriter.toCharArray().joinToString("")
+        }
 
-    fun JAnnotationUse.annotations(): Map<String, JAnnotationValue> {
-        return try {
+        fun JAnnotationUse.annotations(): Map<String, JAnnotationValue> = try {
             annotationMembers
-        }catch (NPE: NullPointerException){
-            return mapOf()
+        } catch (NPE: NullPointerException) {
+            mapOf()
+        }
+
+        private fun fullQualifiedNameToPoetClassName(fullName: String): ClassName {
+            val fullNameSplit = fullName.split(".")
+            return ClassName(fullNameSplit.dropLast(1).joinToString("."), fullNameSplit.last())
         }
     }
 }
