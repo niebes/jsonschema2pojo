@@ -43,7 +43,11 @@ class KotlinConverter {
                 FunSpec.constructorBuilder().apply {
                     clazz.fields().entries.forEach { (name, fieldType) ->
                         addParameter(
-                            ParameterSpec.builder(name, jTypeToPoetClassName(fieldType.type()))
+                            ParameterSpec.builder(
+                                name, jTypeToPoetClassName(fieldType.type()).copy(
+                                    nullable = isNullable(fieldType)
+                                )
+                            )
                                 .build()
                         )
                     }
@@ -52,11 +56,14 @@ class KotlinConverter {
             ).apply {
                 clazz.fields().entries.forEach { (name, fieldType) ->
                     addProperty(
-                        PropertySpec.builder(name, jTypeToPoetClassName(fieldType.type()))
-                            .initializer(name).apply {
-                                val propertySpec = this
-                                toAnnotationSpec(fieldType).onEach(propertySpec::addAnnotation)
-                            }
+                        PropertySpec.builder(
+                            name, jTypeToPoetClassName(fieldType.type()).copy(
+                                nullable = isNullable(fieldType)
+                            )
+                        ).initializer(name).apply {
+                            val propertySpec = this
+                            toAnnotationSpec(fieldType).onEach(propertySpec::addAnnotation)
+                        }
                             .build()
                     )
                 }
@@ -68,6 +75,12 @@ class KotlinConverter {
             .build()
             .toString()
     }
+
+    private fun isNullable(fieldType: JFieldVar) = with(fieldType.annotations()
+        .map { it.annotationClass.fullName() }) {
+        contains("javax.annotation.Nullable") || !contains("javax.annotation.Nonnull")
+    }
+
 
     private fun toAnnotationSpec(jFieldVar: JFieldVar): List<AnnotationSpec> =
         jFieldVar.annotations().map { jAnnotationUse ->
@@ -100,7 +113,6 @@ class KotlinConverter {
         }
 
         private fun jClassToPoetClassName(jClass: JClass): ClassName {
-            jClass.typeParams()
             return fullQualifiedNameToPoetClassName(jClass.fullName())
         }
 
