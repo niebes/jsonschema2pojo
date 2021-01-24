@@ -10,7 +10,10 @@ import com.squareup.kotlinpoet.TypeVariableName
 import com.sun.codemodel.JAnnotationUse
 import com.sun.codemodel.JAnnotationValue
 import com.sun.codemodel.JFieldVar
+import com.sun.codemodel.JFormatter
+import com.sun.codemodel.JGenerable
 import com.sun.codemodel.JPackage
+import java.io.CharArrayWriter
 
 
 class KotlinConverter {
@@ -43,7 +46,7 @@ class KotlinConverter {
     ) {
         val type = TypeVariableName(fieldType.type().fullName()).apply {
             toAnnotationSpec(fieldType).forEach { annotationSpec ->
-               // addAnnotation(annotationSpec)
+                addAnnotation(annotationSpec)
             }
         }
         addParameter(name, type)
@@ -55,11 +58,18 @@ class KotlinConverter {
             AnnotationSpec.builder(ClassName(annotationClass.fullName(), annotationClass.name()))
                 .apply {
                     jAnnotationUse.annotations()?.map { (key, value) ->
-                        addMember("$key = %S", value.toString())
+                        addMember("$key = ${generateToString(value)}")
                     }
                 }
                 .build()
         }
+    }
+
+    private fun generateToString(jGenerable: JGenerable): String {
+        val charArrayWriter = CharArrayWriter()
+        val jFormatter = JFormatter(charArrayWriter)
+        jGenerable.generate(jFormatter)
+        return charArrayWriter.toCharArray().joinToString("")
     }
 
     fun JAnnotationUse.annotations(): Map<String, JAnnotationValue> {
